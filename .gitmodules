@@ -1,3 +1,6 @@
 [submodule "stentor-shine"]
 	path = stentor-shine
 	url = https://github.com/screamuch/stentor-shine
+[submodule "stentor-shake"]
+	path = stentor-shake
+	url = https://github.com/screamuch/stentor-shake
