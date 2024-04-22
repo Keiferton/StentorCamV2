@@ -4,8 +4,14 @@ import time
 import sys
 
 # Initialize Serial Connection
+"""
+VERY HACKY, PETER FIX THIS
+"""
 serial_port = '/dev/ttyUSB0'
 baud_rate = 115200
+"""
+VERY HACKY, PETER FIX THIS, PROGRAM IS SUPPOSED TO WAIT UNTIL SERIAL IS ESTABLISHED AND COMPLETE
+"""
 ser = serial.Serial(serial_port, baud_rate)
 
 # Function to send G-code to the printer
@@ -75,6 +81,9 @@ layout = [
 window = sg.Window('XYZ Control Panel', layout)
 
 # sleep and home
+"""
+VERY HACKY, PETER FIX THIS
+"""
 print("Loading printer...")
 time.sleep(5)
 home_printer()
