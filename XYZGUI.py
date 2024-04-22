@@ -1,10 +1,10 @@
 import PySimpleGUI as sg
-#import serial
+import serial
 import time
 import sys
 
 # Initialize Serial Connection
-"""serial_port = '/dev/ttyUSB0'
+serial_port = '/dev/ttyUSB0'
 baud_rate = 115200
 ser = serial.Serial(serial_port, baud_rate)
 
@@ -13,7 +13,7 @@ def send_gcode(command):
     ser.write(command.encode('utf-8'))
     ser.write(b'\n')
     time.sleep(0.1)
-"""
+
 # Initial positions
 INITIAL_X, INITIAL_Y, INITIAL_Z = 200, 150, 170
 
@@ -40,7 +40,7 @@ def update_axis(axis, increment):
             Y = new_value
         elif axis == 'Z':
             Z = new_value
-        #send_gcode(f"G1 {axis}{new_value}")
+        send_gcode(f"G1 {axis}{new_value}")
     else:
         print(f"{axis} axis limit reached.")
 
@@ -48,7 +48,7 @@ def update_axis(axis, increment):
 
 def home_printer():
     global X, Y, Z
-    #send_gcode('G28')  # Homing command
+    send_gcode('G28')  # Homing command
     print('Homing Printer, please do wait for countdown to complete')
     X, Y, Z = INITIAL_X, INITIAL_Y, INITIAL_Z
     for remaining in range(10, 0, -1):
@@ -59,7 +59,7 @@ def home_printer():
 
     sys.stdout.write("\rComplete!            \n")
     print(f"Printer homed. Reset positions to X: {X}, Y: {Y}, Z: {Z}")
-
+    
 # Layout for the Radio Buttons and action buttons
 layout = [
     [sg.Radio('X Axis', 'AXIS_CHOICE', key='X', default=True),
@@ -74,7 +74,13 @@ layout = [
 # Create the window
 window = sg.Window('XYZ Control Panel', layout)
 
+# sleep and home
+print("Loading printer...")
+time.sleep(5)
+home_printer()
+
 # Event loop
+
 while True:
     event, values = window.read()
 
@@ -96,4 +102,4 @@ while True:
 
 # Close the window and serial connection
 window.close()
-#ser.close()
+ser.close()
