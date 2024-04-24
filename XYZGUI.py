@@ -4,12 +4,25 @@ import serial.tools.list_ports
 import time
 import sys
 
-
 # Function to send G-code to the printer
+# def send_gcode(command):
+#     ser.write(command.encode('utf-8'))
+#     ser.write(b'\n')
+#     time.sleep(0.1)
+
+# Updated send_gcode command waits until printer completes current action before proceeding
 def send_gcode(command):
-    ser.write(command.encode('utf-8'))
-    ser.write(b'\n')
-    time.sleep(0.1)
+    ser.write((command + '\n').encode('utf-8'))  # Use '\r\n' if needed
+    time.sleep(0.1)  # Initial delay for command processing
+    while True:
+        if ser.in_waiting > 0:  # Check if there's data waiting to be read
+            response = ser.readline().decode('utf-8').strip()
+            if "ok" in response:  # Assuming 'ok' is the acknowledgment from the printer
+                break
+            elif "error" in response:  # Handle potential error messages
+                sg.popup(f"Error from printer: {response}", title='Printer Error', keep_on_top=True)
+                break
+
 
 # Initial positions
 INITIAL_X, INITIAL_Y, INITIAL_Z = 200, 150, 170
@@ -89,8 +102,8 @@ def update_axis(axis, increment):
 
 def home_printer():
     global X, Y, Z
+    print('Homing Printer, please do wait for countdown to complete') # Countdown not really necessary, the program will wait until printer is done homing now
     send_gcode('G28')  # Homing command
-    print('Homing Printer, please do wait for countdown to complete')
     X, Y, Z = INITIAL_X, INITIAL_Y, INITIAL_Z
     for remaining in range(10, 0, -1):
         sys.stdout.write("\r")
