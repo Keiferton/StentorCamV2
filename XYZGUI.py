@@ -1,18 +1,9 @@
 import PySimpleGUI as sg
 import serial
+import serial.tools.list_ports
 import time
 import sys
 
-# Initialize Serial Connection
-"""
-VERY HACKY, PETER FIX THIS
-"""
-serial_port = '/dev/ttyUSB0'
-baud_rate = 115200
-"""
-VERY HACKY, PETER FIX THIS, PROGRAM IS SUPPOSED TO WAIT UNTIL SERIAL IS ESTABLISHED AND COMPLETE
-"""
-ser = serial.Serial(serial_port, baud_rate)
 
 # Function to send G-code to the printer
 def send_gcode(command):
@@ -31,6 +22,50 @@ MIN_X, MIN_Y, MIN_Z = 0, 0, 0
 # Time of the last click and click interval in seconds
 last_click_time = 0
 click_interval = 0.5
+
+# In case the port needs to be manually selected
+# def find_serial_port():
+#     ports = serial.tools.list_ports.comports()
+#     usb_ports = [port for port in ports if 'USB' in port.description]
+#     if not usb_ports:
+#         print("No USB serial ports found.")
+#         return None
+#     print("Available USB serial ports:")
+#     for i, port in enumerate(usb_ports):
+#         print(f"{i}: {port.device} - {port.description}")
+#     index = int(input("Enter the number of the port to use: "))
+#     return usb_ports[index].device
+
+def find_serial_port():
+    ports = serial.tools.list_ports.comports()
+    usb_ports = [port for port in ports if 'USB' in port.description]
+    if not usb_ports:
+        print("No USB serial ports found.")
+        return None
+
+    for usb_port in usb_ports:
+        try:
+            ser = serial.Serial(usb_port.device, 115200, timeout=1)
+            ser.close()  # Close the port now that we know it works
+            print(f"Selected port: {usb_port.device} - {usb_port.description}")
+            return usb_port.device
+        except serial.SerialException:
+            print(f"Failed to connect on {usb_port.device}")
+
+    print("No available ports responded.")
+    return None
+
+def wait_for_connection(serial_port):
+    """Attempt to open a serial connection and wait until it is established."""
+    baud_rate = 115200
+    while True:
+        try:
+            ser = serial.Serial(serial_port, baud_rate, timeout=1)
+            print(f"Connected to {serial_port} at {baud_rate} baud.")
+            return ser
+        except serial.SerialException:
+            print(f"Waiting for connection on {serial_port}...")
+            time.sleep(2)  # Wait a bit before trying to connect again
 
 # Function to update the global variables with limit checks, rounding, and action execution
 def update_axis(axis, increment):
@@ -81,11 +116,11 @@ layout = [
 window = sg.Window('XYZ Control Panel', layout)
 
 # sleep and home
-"""
-VERY HACKY, PETER FIX THIS
-"""
-print("Loading printer...")
-time.sleep(5)
+# Initialize Serial Connection
+serial_port = find_serial_port()
+ser = None
+if serial_port:
+    ser = wait_for_connection(serial_port)
 home_printer()
 
 # Event loop
