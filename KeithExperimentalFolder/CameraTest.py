@@ -4,12 +4,9 @@ from picamera import PiCamera
 
 camera = PiCamera()
 
-# Initialize camera with recommended settings
-camera.resolution = (1920, 1080)
-camera.awb_mode = 'off'  # Turn off auto white balance
-camera.awb_gains = (1.5, 1.2)
-camera.iso = 200
-camera.shutter_speed = 100000  # 100 ms exposure
+# Ensure preview is not fullscreen by default
+camera.preview_fullscreen = False
+camera.preview_window = (100, 100, 640, 480)  # Smaller preview window
 
 def update_camera_settings():
     try:
