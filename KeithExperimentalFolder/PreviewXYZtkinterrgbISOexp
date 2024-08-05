@@ -1,0 +1,182 @@
+import tkinter as tk
+from tkinter import ttk
+from tkinter import messagebox
+import serial
+import time
+from time import sleep
+import sys
+from picamera import PiCamera
+from datetime import datetime
+
+# Initialize Serial Connection
+serial_port = '/dev/ttyUSB0'
+baud_rate = 115200
+ser = serial.Serial(serial_port, baud_rate)
+sleep(2)
+
+camera = PiCamera()  # initializes new camera object
+
+# Camera function
+def show_camera():
+    camera.resolution = (1920, 1080)  # 480x360 resolution
+    preview_x = 1240
+    preview_y = 600
+    preview_width = 640
+    preview_height = 480
+    camera.rotation = 0
+    camera.preview_fullscreen = False
+    camera.preview_window = (preview_x, preview_y, preview_width, preview_height)
+    camera.start_preview()  # begins camera preview
+
+show_camera()  # begins camera, persistent until closed
+
+# Function to send G-code to the printer
+def send_gcode(command):
+    ser.write(command.encode('utf-8'))
+    ser.write(b'\n')
+    time.sleep(0.1)
+
+# Initial positions
+INITIAL_X, INITIAL_Y, INITIAL_Z = 200, 150, 170
+
+# Global variables with initial, minimum, and maximum values
+X, Y, Z = INITIAL_X, INITIAL_Y, INITIAL_Z
+MAX_X, MAX_Y, MAX_Z = 200, 150, 170
+MIN_X, MIN_Y, MIN_Z = 0, 90, 125  # Changed 2/9/2024 due to longer lens
+
+# Time of the last click and click interval in seconds
+last_click_time = 0
+click_interval = 0.5
+
+# Function to update the global variables with limit checks, rounding, and action execution
+def update_axis(axis, increment):
+    global X, Y, Z
+
+    new_value = round((X if axis == 'X' else Y if axis == 'Y' else Z) + increment, 2)
+    if MIN_X <= new_value <= MAX_X and axis == 'X' or \
+       MIN_Y <= new_value <= MAX_Y and axis == 'Y' or \
+       MIN_Z <= new_value <= MAX_Z and axis == 'Z':
+        if axis == 'X':
+            X = new_value
+        elif axis == 'Y':
+            Y = new_value
+        elif axis == 'Z':
+            Z = new_value
+        
+        send_gcode(f"G1 {axis}{new_value}")
+    else:
+        print(f"{axis} axis limit reached.")
+
+    print(f"Updated values: X-{X}, Y-{Y}, Z-{Z}")
+
+def home_printer():
+    global X, Y, Z
+    print('Homing Printer, please wait for countdown to complete')
+    send_gcode('G28')  # Homing command
+    sleep(1)
+    X, Y, Z = INITIAL_X, INITIAL_Y, INITIAL_Z
+    for remaining in range(15, 0, -1):
+        sys.stdout.write("\r")
+        sys.stdout.write("{:2d} seconds remaining.".format(remaining))
+        sys.stdout.flush()
+        time.sleep(1)
+
+    sys.stdout.write("\rComplete!            \n")
+    print(f"Printer homed. Reset positions to X: {X}, Y: {Y}, Z: {Z}")
+
+home_printer()
+
+# Function to update camera settings
+def update_camera_settings(r, b, iso, exposure):
+    camera.awb_gains = (r, b)
+    camera.iso = iso
+    camera.shutter_speed = exposure
+
+# Function to handle window close event
+def on_closing():
+    ser.close()
+    camera.close()
+    root.destroy()
+
+# Create the main window
+root = tk.Tk()
+root.title('XYZ Control Panel')
+root.protocol("WM_DELETE_WINDOW", on_closing)
+
+# Create the tab control
+tab_control = ttk.Notebook(root)
+
+# Movement tab
+movement_tab = ttk.Frame(tab_control)
+tab_control.add(movement_tab, text='Movement')
+
+selected_axis = tk.StringVar(value='X')
+
+# Function to handle button clicks
+def on_button_click(increment):
+    global last_click_time
+    current_time = time.time()
+    if current_time - last_click_time < click_interval:
+        messagebox.showwarning("Warning", "Clicked too fast!")
+    else:
+        update_axis(selected_axis.get(), increment)
+        last_click_time = current_time
+
+# Axis selection radio buttons
+axis_frame = tk.Frame(movement_tab)
+axis_frame.pack(pady=10)
+
+tk.Radiobutton(axis_frame, text='X Axis', variable=selected_axis, value='X').grid(row=0, column=0, padx=10)
+tk.Radiobutton(axis_frame, text='Y Axis', variable=selected_axis, value='Y').grid(row=0, column=1, padx=10)
+tk.Radiobutton(axis_frame, text='Z Axis', variable=selected_axis, value='Z').grid(row=0, column=2, padx=10)
+
+# Increment buttons
+button_frame = tk.Frame(movement_tab)
+button_frame.pack(pady=10)
+
+increments = [0.1, 1, 10, -0.1, -1, -10]
+for i, inc in enumerate(increments):
+    text = f"{'+' if inc > 0 else ''}{inc} mm"
+    action = lambda inc=inc: on_button_click(inc)
+    tk.Button(button_frame, text=text, command=action).grid(row=i // 3, column=i % 3, padx=10, pady=5)
+
+# Home Printer button
+tk.Button(movement_tab, text='Home Printer', command=home_printer).pack(pady=20)
+
+# Picture tab
+picture_tab = ttk.Frame(tab_control)
+tab_control.add(picture_tab, text='Picture')
+
+# Sliders for RGB, ISO, and Exposure
+def update_camera_values(*args):
+    r = red_slider.get()
+    b = blue_slider.get()
+    iso = iso_slider.get()
+    exposure = exposure_slider.get()
+    update_camera_settings(r, b, iso, exposure)
+
+# Red slider
+red_slider = tk.Scale(picture_tab, from_=0.0, to=8.0, resolution=0.1, orient=tk.HORIZONTAL, label='Red Gain', command=update_camera_values)
+red_slider.set(1.0)  # Default value
+red_slider.pack(fill='x', padx=10, pady=5)
+
+# Blue slider
+blue_slider = tk.Scale(picture_tab, from_=0.0, to=8.0, resolution=0.1, orient=tk.HORIZONTAL, label='Blue Gain', command=update_camera_values)
+blue_slider.set(1.0)  # Default value
+blue_slider.pack(fill='x', padx=10, pady=5)
+
+# ISO slider
+iso_slider = tk.Scale(picture_tab, from_=100, to=800, orient=tk.HORIZONTAL, label='ISO', command=update_camera_values)
+iso_slider.set(0)  # Default value for auto
+iso_slider.pack(fill='x', padx=10, pady=5)
+
+# Exposure slider
+exposure_slider = tk.Scale(picture_tab, from_=0, to=6000000, orient=tk.HORIZONTAL, label='Exposure', command=update_camera_values)
+exposure_slider.set(0)  # Default value for auto
+exposure_slider.pack(fill='x', padx=10, pady=5)
+
+# Pack the tab control
+tab_control.pack(expand=1, fill='both')
+
+# Start the Tkinter event loop
+root.mainloop()
