@@ -1,0 +1,118 @@
+import PySimpleGUI as sg
+import serial
+import time
+from time import sleep
+import sys
+from datetime import datetime
+from picamera2 import Picamera2, Preview
+
+# Initialize Serial Connection
+serial_port = '/dev/ttyUSB0'
+baud_rate = 115200
+ser = serial.Serial(serial_port, baud_rate)
+sleep(2)
+
+# Camera function using picamera2
+def show_camera():
+    picam2 = Picamera2()
+    preview_config = picam2.preview_configuration(main={"size": (1920, 1080)})
+    picam2.configure(preview_config)
+    picam2.start_preview(Preview.QTGL)  # Use QTGL preview
+    picam2.start()
+    return picam2
+
+camera = show_camera()  # Begin camera, persistent until closed
+
+# Function to send G-code to the printer
+def send_gcode(command):
+    ser.write(command.encode('utf-8'))
+    ser.write(b'\n')
+    time.sleep(0.1)
+
+# Initial positions
+INITIAL_X, INITIAL_Y, INITIAL_Z = 200, 150, 170
+
+# Global variables with initial, minimum, and maximum values
+X, Y, Z = INITIAL_X, INITIAL_Y, INITIAL_Z
+MAX_X, MAX_Y, MAX_Z = 200, 150, 170
+MIN_X, MIN_Y, MIN_Z = 0, 90, 125  # Changed 2/9/2024 due to longer lens
+
+# Time of the last click and click interval in seconds
+last_click_time = 0
+click_interval = 0.5
+
+# Function to update the global variables with limit checks, rounding, and action execution
+def update_axis(axis, increment):
+    global X, Y, Z
+
+    new_value = round((X if axis == 'X' else Y if axis == 'Y' else Z) + increment, 2)
+    if MIN_X <= new_value <= MAX_X and axis == 'X' or \
+       MIN_Y <= new_value <= MAX_Y and axis == 'Y' or \
+       MIN_Z <= new_value <= MAX_Z and axis == 'Z':
+        if axis == 'X':
+            X = new_value
+        elif axis == 'Y':
+            Y = new_value
+        elif axis == 'Z':
+            Z = new_value
+        
+        send_gcode(f"G1 {axis}{new_value}")
+    else:
+        print(f"{axis} axis limit reached.")
+
+    print(f"Updated values: X-{X}, Y-{Y}, Z-{Z}")
+
+def home_printer():
+    global X, Y, Z
+    print('Homing Printer, please wait for countdown to complete')
+    send_gcode('G28')  # Homing command
+    sleep(1)    
+    X, Y, Z = INITIAL_X, INITIAL_Y, INITIAL_Z
+    for remaining in range(15 , 0, -1):
+        sys.stdout.write("\r")
+        sys.stdout.write("{:2d} seconds remaining.".format(remaining))
+        sys.stdout.flush()
+        time.sleep(1)
+
+    sys.stdout.write("\rComplete!            \n")
+    print(f"Printer homed. Reset positions to X: {X}, Y: {Y}, Z: {Z}")
+home_printer()
+
+# Layout for the Radio Buttons and action buttons
+layout = [
+    [sg.Radio('X Axis', 'AXIS_CHOICE', key='X', default=True),
+     sg.Radio('Y Axis', 'AXIS_CHOICE', key='Y'),
+     sg.Radio('Z Axis', 'AXIS_CHOICE', key='Z')],
+    
+    [sg.Button('+ 0.1 mm', key='+0.1'), sg.Button('+ 1 mm', key='+1'), sg.Button('+ 10 mm', key='+10')],
+    [sg.Button('- 0.1 mm', key='-0.1'), sg.Button('- 1 mm', key='-1'), sg.Button('- 10 mm', key='-10')],
+    [sg.Button('Home Printer', key='-HOME-')]
+]
+
+# Create the window
+window = sg.Window('XYZ Control Panel', layout)
+
+# Event loop
+while True:
+    event, values = window.read()
+
+    if event == sg.WIN_CLOSED:
+        break
+
+    if event in ('+0.1', '+1', '+10', '-0.1', '-1', '-10'):
+        current_time = time.time()
+        if current_time - last_click_time < click_interval:
+            sg.popup('\n\n\n\n\nClicked too fast!\n\n\n\n\n', title='Warning')
+        else:
+            selected_axis = 'X' if values['X'] else 'Y' if values['Y'] else 'Z'
+            increment = float(event.replace(' mm', '').replace('+', ''))
+            update_axis(selected_axis, increment)
+            last_click_time = current_time
+
+    elif event == '-HOME-':
+        home_printer()
+
+# Close serial connection, window, and camera
+ser.close()
+window.close()
+camera.stop()
